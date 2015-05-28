@@ -98,6 +98,9 @@
 				var datasetObject = {
 					label : dataset.label || null,
 					fillColor : dataset.fillColor,
+					fillColorStart : dataset.fillColorStart,
+					fillColorEnd : dataset.fillColorEnd,
+					easeInOutGradient: dataset.easeInOutGradient || null,
 					strokeColor : dataset.strokeColor,
 					pointColor : dataset.pointColor,
 					pointStrokeColor : dataset.pointStrokeColor,
@@ -357,13 +360,73 @@
 
 				ctx.stroke();
 
-				if (this.options.datasetFill && pointsWithValues.length > 0){
-					//Round off the line by going to the base of the chart, back to the start, then fill.
-					ctx.lineTo(pointsWithValues[pointsWithValues.length - 1].x, this.scale.endPoint);
-					ctx.lineTo(pointsWithValues[0].x, this.scale.endPoint);
-					ctx.fillStyle = dataset.fillColor;
-					ctx.closePath();
-					ctx.fill();
+				if (this.options.datasetFill && pointsWithValues.length > 0) {
+
+				  //Round off the line by going to the base of the chart, back to the start, then fill.
+				  ctx.lineTo(pointsWithValues[pointsWithValues.length - 1].x, this.scale.endPoint);
+				  ctx.lineTo(pointsWithValues[0].x, this.scale.endPoint);
+
+				  // Bézier curve math
+				  // http://stackoverflow.com/a/30205767/537998
+				  function easeInOut(t) {
+				    return t < .5 ? 4 * t * t * t :
+				    	(t - 1) * (2 * t - 2) * (2 * t - 2) + 1
+				  }
+
+				  // Get largest Y coord, use `pointsWithValues` value
+				  var highestPoint = (function () {
+				    var heighest = 0;
+				    helpers.each(pointsWithValues, function (point) {
+				      heighest = point.y > heighest ? point.y : heighest;
+				    });
+				    return heighest;
+				  })();
+
+				  var rgbaStringToArray = function (colorString) {
+				    var start = colorString.indexOf('(') + 1;
+				    var end = colorString.indexOf(')');
+				    colorString = colorString.substr(start, end - start);
+				    var colorArray = colorString.split(',');
+				    helpers.each(colorArray, function (value, key) {
+				      colorArray[key] = Number(value);
+				    });
+				    return colorArray;
+				  };
+
+				  var gradientColors = {
+				    start: rgbaStringToArray(dataset.fillColorStart),
+				    end: rgbaStringToArray(dataset.fillColorEnd)
+				  };
+
+				  var getEaseValue = function (key, step) {
+				    var start = gradientColors.start[key];
+				    var end = gradientColors.end[key];
+				    var value = easeInOut(step) * (end - start) + start;
+				    return key === 3 ? Math.round(value * 100000) / 100000 : value;
+				  };
+
+				  var gradient = ctx.createLinearGradient(0, 0, 0, highestPoint);
+
+				  if(dataset.easeInOutGradient) {
+					  // Smaller number means more `addColorStop` steps
+					  var steps = 0.01;
+
+					  for (var step = 0; step <= 1; step += steps) {
+					    var color = 'rgba(';
+					    for (var i = 0; i < 4; i++) {
+					      color += getEaseValue(i, step)
+					      color += i !== 3 ? ',' : ')';
+					    }
+					    gradient.addColorStop(step, color);
+					  }
+				  } else {
+					  gradient.addColorStop(0, dataset.fillColorStart);
+					  gradient.addColorStop(1, dataset.fillColorEnd);
+				  }
+
+				  ctx.fillStyle = gradient;
+				  ctx.closePath();
+				  ctx.fill();
 				}
 
 				//Now draw the points over the line
